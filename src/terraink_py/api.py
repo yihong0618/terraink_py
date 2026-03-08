@@ -52,6 +52,7 @@ class PosterGenerator:
             theme=theme,
             layers=layers,
             projector=projector,
+            poster_bounds=bounds.poster_bounds,
             request=prepared,
         )
         output_paths = resolve_output_paths(prepared.output, prepared.formats)

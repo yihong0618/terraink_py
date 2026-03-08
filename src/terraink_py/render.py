@@ -7,7 +7,15 @@ from xml.sax.saxutils import escape
 from PIL import ImageFont
 
 from .geo import MercatorProjector, format_coordinates
-from .models import CanvasSize, Coordinate, Point, PosterRequest, ProjectedScene, Theme
+from .models import (
+    Bounds,
+    CanvasSize,
+    Coordinate,
+    Point,
+    PosterRequest,
+    ProjectedScene,
+    Theme,
+)
 from .text import (
     ATTRIBUTION_FONT_BASE_PX,
     CITY_FONT_BASE_PX,
@@ -79,6 +87,23 @@ EARTH_CIRCUMFERENCE_M = 40_075_016.686
 TILE_SIZE_PX = 512.0
 MIN_MAP_ZOOM = 0.5
 MAX_MAP_ZOOM = 20.0
+CLIP_PADDING_PX = 24.0
+POINT_EQUALITY_EPSILON = 1e-6
+POLYGON_SIMPLIFY_TOLERANCE_PX = {
+    "water": 0.7,
+    "parks": 0.85,
+    "buildings": 0.45,
+    "aeroway": 0.75,
+}
+LINE_SIMPLIFY_TOLERANCE_PX = {
+    "waterway": 0.6,
+    "rail": 0.7,
+    "road_major": 0.55,
+    "road_minor_high": 0.75,
+    "road_minor_mid": 0.9,
+    "road_minor_low": 1.0,
+    "road_path": 1.1,
+}
 
 
 def build_scene(
@@ -90,15 +115,48 @@ def build_scene(
     theme: Theme,
     layers: LayerMap,
     projector: MercatorProjector,
+    poster_bounds: Bounds,
     request: PosterRequest,
 ) -> ProjectedScene:
+    clip_rect = (
+        -CLIP_PADDING_PX,
+        -CLIP_PADDING_PX,
+        size.width + CLIP_PADDING_PX,
+        size.height + CLIP_PADDING_PX,
+    )
     polygons = {
-        name: [project_path(projector, path) for path in paths if len(path) >= 4]
+        name: [
+            projected
+            for path in paths
+            if len(path) >= 4
+            for projected in (
+                project_polygon_path(
+                    projector,
+                    path,
+                    poster_bounds=poster_bounds,
+                    clip_rect=clip_rect,
+                    tolerance=POLYGON_SIMPLIFY_TOLERANCE_PX.get(name, 0.75),
+                ),
+            )
+            if projected
+        ]
         for name, paths in layers.items()
         if name in {"water", "parks", "buildings", "aeroway"}
     }
     lines = {
-        name: [project_path(projector, path) for path in paths if len(path) >= 2]
+        name: [
+            projected
+            for path in paths
+            if len(path) >= 2
+            for projected in project_line_paths(
+                projector,
+                path,
+                poster_bounds=poster_bounds,
+                clip_rect=clip_rect,
+                tolerance=LINE_SIMPLIFY_TOLERANCE_PX.get(name, 0.75),
+            )
+            if len(projected) >= 2
+        ]
         for name, paths in layers.items()
         if name not in {"water", "parks", "buildings", "aeroway"}
     }
@@ -128,6 +186,332 @@ def project_path(
     projector: MercatorProjector, path: list[tuple[float, float]]
 ) -> list[Point]:
     return [projector.project(lon, lat) for lon, lat in path]
+
+
+def project_polygon_path(
+    projector: MercatorProjector,
+    path: list[tuple[float, float]],
+    *,
+    poster_bounds: Bounds,
+    clip_rect: tuple[float, float, float, float],
+    tolerance: float,
+) -> list[Point]:
+    if not path_intersects_bounds(path, poster_bounds):
+        return []
+    projected = project_path(projector, path)
+    clipped = clip_polygon_to_rect(projected, clip_rect)
+    if len(clipped) < 4:
+        return []
+    simplified = simplify_polygon(clipped, tolerance)
+    if len(simplified) < 4:
+        return []
+    return simplified
+
+
+def project_line_paths(
+    projector: MercatorProjector,
+    path: list[tuple[float, float]],
+    *,
+    poster_bounds: Bounds,
+    clip_rect: tuple[float, float, float, float],
+    tolerance: float,
+) -> list[list[Point]]:
+    if not path_intersects_bounds(path, poster_bounds):
+        return []
+    projected = project_path(projector, path)
+    clipped_paths = clip_polyline_to_rect(projected, clip_rect)
+    return [
+        simplified
+        for clipped in clipped_paths
+        for simplified in (simplify_polyline(clipped, tolerance),)
+        if len(simplified) >= 2
+    ]
+
+
+def path_intersects_bounds(path: list[tuple[float, float]], bounds: Bounds) -> bool:
+    min_lon = min(point[0] for point in path)
+    max_lon = max(point[0] for point in path)
+    min_lat = min(point[1] for point in path)
+    max_lat = max(point[1] for point in path)
+    return not (
+        max_lon < bounds.west
+        or min_lon > bounds.east
+        or max_lat < bounds.south
+        or min_lat > bounds.north
+    )
+
+
+def clip_polyline_to_rect(
+    points: list[Point], rect: tuple[float, float, float, float]
+) -> list[list[Point]]:
+    if len(points) < 2:
+        return []
+
+    clipped_paths: list[list[Point]] = []
+    current: list[Point] = []
+    for start, end in zip(points, points[1:]):
+        clipped = clip_segment_to_rect(start, end, rect)
+        if clipped is None:
+            if len(current) >= 2:
+                deduped = dedupe_consecutive_points(current)
+                if len(deduped) >= 2:
+                    clipped_paths.append(deduped)
+            current = []
+            continue
+
+        clipped_start, clipped_end = clipped
+        if not current:
+            current = [clipped_start, clipped_end]
+            continue
+
+        if points_are_close(current[-1], clipped_start):
+            if not points_are_close(current[-1], clipped_end):
+                current.append(clipped_end)
+            continue
+
+        deduped = dedupe_consecutive_points(current)
+        if len(deduped) >= 2:
+            clipped_paths.append(deduped)
+        current = [clipped_start, clipped_end]
+
+    if len(current) >= 2:
+        deduped = dedupe_consecutive_points(current)
+        if len(deduped) >= 2:
+            clipped_paths.append(deduped)
+
+    return clipped_paths
+
+
+def clip_polygon_to_rect(
+    points: list[Point], rect: tuple[float, float, float, float]
+) -> list[Point]:
+    if len(points) < 4:
+        return []
+
+    ring = points[:-1] if points[0] == points[-1] else points[:]
+    output = ring
+    for edge in ("left", "right", "top", "bottom"):
+        output = clip_polygon_edge(output, rect, edge)
+        if len(output) < 3:
+            return []
+
+    output = dedupe_consecutive_points(output)
+    if len(output) < 3:
+        return []
+    if not points_are_close(output[0], output[-1]):
+        output.append(output[0])
+    if polygon_area(output) <= POINT_EQUALITY_EPSILON:
+        return []
+    return output
+
+
+def clip_polygon_edge(
+    points: list[Point],
+    rect: tuple[float, float, float, float],
+    edge: str,
+) -> list[Point]:
+    if not points:
+        return []
+
+    clipped: list[Point] = []
+    previous = points[-1]
+    previous_inside = point_inside_edge(previous, rect, edge)
+    for current in points:
+        current_inside = point_inside_edge(current, rect, edge)
+        if current_inside:
+            if not previous_inside:
+                clipped.append(
+                    intersect_segment_with_edge(previous, current, rect, edge)
+                )
+            clipped.append(current)
+        elif previous_inside:
+            clipped.append(intersect_segment_with_edge(previous, current, rect, edge))
+        previous = current
+        previous_inside = current_inside
+    return clipped
+
+
+def point_inside_edge(
+    point: Point, rect: tuple[float, float, float, float], edge: str
+) -> bool:
+    x, y = point
+    min_x, min_y, max_x, max_y = rect
+    if edge == "left":
+        return x >= min_x
+    if edge == "right":
+        return x <= max_x
+    if edge == "top":
+        return y >= min_y
+    return y <= max_y
+
+
+def intersect_segment_with_edge(
+    start: Point,
+    end: Point,
+    rect: tuple[float, float, float, float],
+    edge: str,
+) -> Point:
+    x1, y1 = start
+    x2, y2 = end
+    min_x, min_y, max_x, max_y = rect
+    dx = x2 - x1
+    dy = y2 - y1
+
+    if edge in {"left", "right"}:
+        boundary_x = min_x if edge == "left" else max_x
+        if abs(dx) <= POINT_EQUALITY_EPSILON:
+            return (boundary_x, y1)
+        ratio = (boundary_x - x1) / dx
+        return (boundary_x, y1 + ratio * dy)
+
+    boundary_y = min_y if edge == "top" else max_y
+    if abs(dy) <= POINT_EQUALITY_EPSILON:
+        return (x1, boundary_y)
+    ratio = (boundary_y - y1) / dy
+    return (x1 + ratio * dx, boundary_y)
+
+
+def clip_segment_to_rect(
+    start: Point,
+    end: Point,
+    rect: tuple[float, float, float, float],
+) -> tuple[Point, Point] | None:
+    min_x, min_y, max_x, max_y = rect
+    x1, y1 = start
+    x2, y2 = end
+    dx = x2 - x1
+    dy = y2 - y1
+    lower = 0.0
+    upper = 1.0
+
+    for p_value, q_value in (
+        (-dx, x1 - min_x),
+        (dx, max_x - x1),
+        (-dy, y1 - min_y),
+        (dy, max_y - y1),
+    ):
+        if abs(p_value) <= POINT_EQUALITY_EPSILON:
+            if q_value < 0:
+                return None
+            continue
+        ratio = q_value / p_value
+        if p_value < 0:
+            if ratio > upper:
+                return None
+            lower = max(lower, ratio)
+        else:
+            if ratio < lower:
+                return None
+            upper = min(upper, ratio)
+
+    clipped_start = (x1 + lower * dx, y1 + lower * dy)
+    clipped_end = (x1 + upper * dx, y1 + upper * dy)
+    if points_are_close(clipped_start, clipped_end):
+        return None
+    return clipped_start, clipped_end
+
+
+def simplify_polyline(points: list[Point], tolerance: float) -> list[Point]:
+    deduped = dedupe_consecutive_points(points)
+    if len(deduped) <= 2 or tolerance <= 0:
+        return deduped
+
+    keep = [False] * len(deduped)
+    keep[0] = True
+    keep[-1] = True
+    stack = [(0, len(deduped) - 1)]
+    while stack:
+        start_index, end_index = stack.pop()
+        max_distance = 0.0
+        split_index: int | None = None
+        for index in range(start_index + 1, end_index):
+            distance = point_to_segment_distance(
+                deduped[index], deduped[start_index], deduped[end_index]
+            )
+            if distance > max_distance:
+                max_distance = distance
+                split_index = index
+        if split_index is not None and max_distance > tolerance:
+            keep[split_index] = True
+            stack.append((start_index, split_index))
+            stack.append((split_index, end_index))
+
+    return [point for point, should_keep in zip(deduped, keep) if should_keep]
+
+
+def simplify_polygon(points: list[Point], tolerance: float) -> list[Point]:
+    ring = points[:-1] if points[0] == points[-1] else points[:]
+    ring = dedupe_consecutive_points(ring)
+    if len(ring) <= 3 or tolerance <= 0:
+        closed = ring[:]
+        if closed and not points_are_close(closed[0], closed[-1]):
+            closed.append(closed[0])
+        return closed
+
+    changed = True
+    while changed and len(ring) > 3:
+        changed = False
+        simplified: list[Point] = []
+        ring_length = len(ring)
+        for index, point in enumerate(ring):
+            previous = ring[index - 1]
+            following = ring[(index + 1) % ring_length]
+            distance = point_to_segment_distance(point, previous, following)
+            if distance <= tolerance:
+                changed = True
+                continue
+            simplified.append(point)
+        if len(simplified) < 3:
+            break
+        ring = simplified
+
+    if len(ring) < 3:
+        return []
+    if polygon_area(ring) <= POINT_EQUALITY_EPSILON:
+        return []
+    ring.append(ring[0])
+    return ring
+
+
+def dedupe_consecutive_points(points: list[Point]) -> list[Point]:
+    deduped: list[Point] = []
+    for point in points:
+        if deduped and points_are_close(deduped[-1], point):
+            continue
+        deduped.append(point)
+    return deduped
+
+
+def points_are_close(first: Point, second: Point) -> bool:
+    return (
+        abs(first[0] - second[0]) <= POINT_EQUALITY_EPSILON
+        and abs(first[1] - second[1]) <= POINT_EQUALITY_EPSILON
+    )
+
+
+def point_to_segment_distance(point: Point, start: Point, end: Point) -> float:
+    px, py = point
+    x1, y1 = start
+    x2, y2 = end
+    dx = x2 - x1
+    dy = y2 - y1
+    if abs(dx) <= POINT_EQUALITY_EPSILON and abs(dy) <= POINT_EQUALITY_EPSILON:
+        return math.hypot(px - x1, py - y1)
+    ratio = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+    clamped_ratio = max(0.0, min(1.0, ratio))
+    projected_x = x1 + clamped_ratio * dx
+    projected_y = y1 + clamped_ratio * dy
+    return math.hypot(px - projected_x, py - projected_y)
+
+
+def polygon_area(points: list[Point]) -> float:
+    if len(points) < 3:
+        return 0.0
+    ring = points[:-1] if points[0] == points[-1] else points
+    area = 0.0
+    for start, end in zip(ring, ring[1:] + ring[:1]):
+        area += start[0] * end[1] - end[0] * start[1]
+    return abs(area) * 0.5
 
 
 def render_svg(scene: ProjectedScene) -> str:

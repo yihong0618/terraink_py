@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--distance-m",
         type=float,
-        default=12000.0,
+        default=8000.0,
         help="Half-width map distance in meters.",
     )
     parser.add_argument(
