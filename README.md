@@ -3,6 +3,10 @@ The repo is python version of [terraink](https://github.com/yousifamanuel/terrai
 [中文文档](README.zh.md)
 now also ships a standalone Python renderer that skips the website entirely and writes map posters directly to `png` and `svg`.
 
+
+![telegram-cloud-photo-size-5-6156580721556917384-y](https://github.com/user-attachments/assets/a1a59cc4-8571-44fc-b73e-42b4e2fa8265)
+
+
 ### Installation
 
 **Install from PyPI:**
