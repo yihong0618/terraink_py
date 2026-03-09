@@ -42,7 +42,13 @@ terraink \
 Use `uv` in this repo:
 
 ```bash
-uv sync
+uv sync --all-groups
+```
+
+Run the shared checks with `prek`:
+
+```bash
+uv run prek run --all-files
 ```
 
 Then run via:

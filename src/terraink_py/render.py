@@ -1026,24 +1026,30 @@ def compute_scene_metrics(scene: ProjectedScene) -> dict[str, float]:
             ((5.0, 0.45), (9.0, 0.58), (12.0, 0.0)),
         ),
         "major_casing_opacity": 0.95 if scene.include_road_outline else 0.0,
-        "minor_high_casing_opacity": interpolate_stops(
-            estimated_zoom,
-            ((6.0, 0.72), (12.0, 0.85), (18.0, 0.92)),
-        )
-        if scene.include_road_outline
-        else 0.0,
-        "minor_mid_casing_opacity": interpolate_stops(
-            estimated_zoom,
-            ((6.0, 0.42), (12.0, 0.56), (18.0, 0.66)),
-        )
-        if scene.include_road_outline
-        else 0.0,
-        "path_casing_opacity": interpolate_stops(
-            estimated_zoom,
-            ((8.0, 0.62), (12.0, 0.72), (18.0, 0.85)),
-        )
-        if scene.include_road_outline
-        else 0.0,
+        "minor_high_casing_opacity": (
+            interpolate_stops(
+                estimated_zoom,
+                ((6.0, 0.72), (12.0, 0.85), (18.0, 0.92)),
+            )
+            if scene.include_road_outline
+            else 0.0
+        ),
+        "minor_mid_casing_opacity": (
+            interpolate_stops(
+                estimated_zoom,
+                ((6.0, 0.42), (12.0, 0.56), (18.0, 0.66)),
+            )
+            if scene.include_road_outline
+            else 0.0
+        ),
+        "path_casing_opacity": (
+            interpolate_stops(
+                estimated_zoom,
+                ((8.0, 0.62), (12.0, 0.72), (18.0, 0.85)),
+            )
+            if scene.include_road_outline
+            else 0.0
+        ),
         "minor_high_opacity": interpolate_stops(
             estimated_zoom,
             ((6.0, 0.84), (10.0, 0.92), (18.0, 1.0)),

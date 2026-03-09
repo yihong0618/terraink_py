@@ -70,7 +70,13 @@ print(result.files)
 本项目使用 `uv` 进行依赖管理：
 
 ```bash
-uv sync
+uv sync --all-groups
+```
+
+使用 `prek` 运行统一检查：
+
+```bash
+uv run prek run --all-files
 ```
 
 然后通过以下命令运行：
