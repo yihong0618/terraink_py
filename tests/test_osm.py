@@ -16,6 +16,7 @@ from terraink_py.osm import (
     classify_polygon_layer,
     close_path,
     extract_paths,
+    fetch_osm_layers,
     geometry_to_points,
     is_closed_shape,
     KNOWN_FOREIGN_CITIES,
@@ -227,6 +228,34 @@ class TestFetchOverpassParallel:
         client.release_slow.set()
         assert client.slow_finished.wait(timeout=1.0)
         thread.join(timeout=1.0)
+
+
+class TestFetchOsmLayersProgress:
+    def test_reports_progress_updates(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "terraink_py.osm._fetch_overpass_payload",
+            lambda query, request, client: {"elements": []},
+        )
+        request = PosterRequest(
+            output=Path("test.png"),
+            lat=0.5,
+            lon=0.5,
+            include_roads=True,
+        )
+        updates: list[tuple[int, str]] = []
+
+        fetch_osm_layers(
+            Bounds(south=0.0, west=0.0, north=1.0, east=1.0),
+            request,
+            cast(CachedHttpClient, object()),
+            progress_callback=lambda percent, message: updates.append(
+                (percent, message)
+            ),
+        )
+
+        assert updates[0] == (35, "Fetching OpenStreetMap data")
+        assert updates[1] == (45, "Parsing OpenStreetMap features")
+        assert updates[-1] == (55, "Map data ready")
 
 
 class TestClassifyPolygonLayer:

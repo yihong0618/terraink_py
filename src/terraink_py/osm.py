@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from queue import Queue
 from threading import Thread
 from typing import cast
@@ -124,6 +124,7 @@ OVERPASS_RETRY_BACKOFF_SECONDS = 1.0
 OVERPASS_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 LayerMap = dict[str, list[list[tuple[float, float]]]]
+OsmProgressCallback = Callable[[int, str], None]
 
 
 def resolve_location(
@@ -147,6 +148,7 @@ def fetch_osm_layers(
     bounds: Bounds,
     request: PosterRequest,
     client: CachedHttpClient,
+    progress_callback: OsmProgressCallback | None = None,
 ) -> LayerMap:
     query = build_overpass_query(bounds, request)
     layers: LayerMap = {
@@ -162,12 +164,18 @@ def fetch_osm_layers(
         "road_minor_low": [],
         "road_path": [],
     }
+    _emit_osm_progress(progress_callback, 35, "Fetching OpenStreetMap data")
     if not query:
+        _emit_osm_progress(progress_callback, 55, "Map data ready")
         return layers
 
     payload = _fetch_overpass_payload(query, request, client)
+    elements = payload.get("elements", [])
+    total_elements = len(elements)
+    report_every = max(total_elements // 5, 1) if total_elements else 1
+    _emit_osm_progress(progress_callback, 45, "Parsing OpenStreetMap features")
 
-    for element in payload.get("elements", []):
+    for index, element in enumerate(elements, start=1):
         tags = element.get("tags", {})
         polygon_layer = classify_polygon_layer(tags)
         if polygon_layer is not None:
@@ -181,7 +189,26 @@ def fetch_osm_layers(
                 if len(geometry) >= 2:
                     layers[line_layer].append(geometry)
 
+        if total_elements and (index == total_elements or index % report_every == 0):
+            percent = 45 + int((index / total_elements) * 10)
+            _emit_osm_progress(
+                progress_callback,
+                percent,
+                "Parsing OpenStreetMap features",
+            )
+
+    _emit_osm_progress(progress_callback, 55, "Map data ready")
     return layers
+
+
+def _emit_osm_progress(
+    progress_callback: OsmProgressCallback | None,
+    percent: int,
+    message: str,
+) -> None:
+    if progress_callback is None:
+        return
+    progress_callback(percent, message)
 
 
 def _fetch_overpass_payload(

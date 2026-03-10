@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 OutputFormat = Literal["png", "svg"]
+ProgressStage = Literal[
+    "preparing_request",
+    "resolving_location",
+    "computing_bounds",
+    "fetching_map_data",
+    "building_scene",
+    "rendering_output",
+    "done",
+]
 Point = tuple[float, float]
 DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
@@ -193,3 +203,13 @@ class PosterResult:
     theme: Theme
     size: CanvasSize
     bounds: PosterBoundsResult
+
+
+@dataclass(slots=True, frozen=True)
+class PosterProgress:
+    stage: ProgressStage
+    percent: int
+    message: str
+
+
+ProgressCallback = Callable[[PosterProgress], None]
