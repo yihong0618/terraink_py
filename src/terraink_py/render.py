@@ -105,7 +105,9 @@ LINE_SIMPLIFY_TOLERANCE_PX = {
     "road_minor_mid": 0.9,
     "road_minor_low": 1.0,
     "road_path": 1.1,
+    "running_route": 0.4,
 }
+RUNNING_ROUTE_COLOR = "#D7EF57"
 
 
 def build_scene(
@@ -711,6 +713,24 @@ def render_svg(scene: ProjectedScene) -> str:
                 )
             )
 
+    for path in scene.lines.get("running_route", []):
+        lines.append(
+            stroke_path_element(
+                path,
+                stroke=theme.map.land,
+                stroke_width=metrics["running_route_outline_width"],
+                opacity=metrics["running_route_outline_opacity"],
+            )
+        )
+        lines.append(
+            stroke_path_element(
+                path,
+                stroke=RUNNING_ROUTE_COLOR,
+                stroke_width=metrics["running_route_width"],
+                opacity=metrics["running_route_opacity"],
+            )
+        )
+
     lines.extend(
         [
             f'<rect x="0" y="0" width="{scene.width}" height="{scene.height * 0.25}" fill="url(#terraink-fade-top)"/>',
@@ -861,6 +881,22 @@ def render_png(scene: ProjectedScene, output_path: Path) -> None:
                 fill=hex_to_rgba(color, alpha),
                 width=metrics[width_key],
             )
+
+    running_outline_alpha = opacity_to_alpha(metrics["running_route_outline_opacity"])
+    running_alpha = opacity_to_alpha(metrics["running_route_opacity"])
+    for path in scene.lines.get("running_route", []):
+        draw_polyline(
+            draw,
+            path,
+            fill=hex_to_rgba(theme.map.land, running_outline_alpha),
+            width=metrics["running_route_outline_width"],
+        )
+        draw_polyline(
+            draw,
+            path,
+            fill=hex_to_rgba(RUNNING_ROUTE_COLOR, running_alpha),
+            width=metrics["running_route_width"],
+        )
 
     apply_png_fades(image, theme.ui.bg)
 
@@ -1040,12 +1076,14 @@ def compute_scene_metrics(scene: ProjectedScene) -> dict[str, float]:
         "minor_mid_width": minor_mid_width,
         "minor_low_width": minor_low_width,
         "path_width": path_width,
+        "running_route_width": max(1.4, major_width * 0.85),
         "waterway_width": max(0.62, 1.15 * line_scale),
         "rail_width": max(0.58, 0.92 * line_scale),
         "major_casing_width": major_width * 1.38,
         "minor_high_casing_width": minor_high_width * 1.45,
         "minor_mid_casing_width": minor_mid_width * 1.15,
         "path_casing_width": path_width * 1.6,
+        "running_route_outline_width": max(2.2, major_width * 1.5),
         "minor_high_overview_width": max(0.1, minor_high_width * 0.34),
         "minor_mid_overview_width": max(0.08, minor_mid_width * 0.3),
         "minor_low_overview_width": max(0.06, minor_low_width * 0.26),
@@ -1108,6 +1146,8 @@ def compute_scene_metrics(scene: ProjectedScene) -> dict[str, float]:
             estimated_zoom,
             ((8.0, 0.7), (12.0, 0.82), (18.0, 0.95)),
         ),
+        "running_route_opacity": 1.0,
+        "running_route_outline_opacity": 0.96,
     }
 
 

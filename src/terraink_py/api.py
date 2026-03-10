@@ -13,6 +13,7 @@ from .http import CachedHttpClient
 from .models import Coordinate, PosterRequest, PosterResult
 from .osm import fetch_osm_layers, resolve_location
 from .render import build_scene, render_png, render_svg
+from .running_page import RUNNING_ROUTE_LAYER, load_running_page_routes
 
 
 class PosterGenerator:
@@ -40,6 +41,9 @@ class PosterGenerator:
             aspect_ratio=prepared.width_cm / prepared.height_cm,
         )
         layers = fetch_osm_layers(bounds.fetch_bounds, prepared, client)
+        running_routes = load_running_page_routes(prepared, location)
+        if running_routes:
+            layers[RUNNING_ROUTE_LAYER] = running_routes
         projector = MercatorProjector.from_bounds(
             bounds.poster_bounds, size.width, size.height
         )

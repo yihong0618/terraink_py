@@ -37,6 +37,14 @@ terraink \
 
 也可以使用 `--location "..."` 参数指定地名，效果相同。
 
+如果要叠加自己在某个城市跑过的路线，可以额外传入 `running_page` 仓库或 parquet 地址：
+
+```bash
+terraink "大连" --running_page yihong0618/run --output outputs/dalian-run
+```
+
+传了 `--running_page` 但没有显式指定 `--distance-m` 时，默认会使用 `12000`。
+
 ### Python 代码中使用
 
 通过坐标生成海报：

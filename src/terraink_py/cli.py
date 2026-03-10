@@ -7,6 +7,9 @@ from .api import generate_poster
 from .data import load_layouts, load_themes
 from .models import DEFAULT_OVERPASS_URL, PosterRequest
 
+DEFAULT_DISTANCE_M = 8_000.0
+RUNNING_PAGE_DISTANCE_M = 12_000.0
+
 
 def build_parser() -> argparse.ArgumentParser:
     themes = ", ".join(load_themes().keys())
@@ -25,6 +28,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--format", nargs="+", default=["png"], choices=["png", "svg"])
     parser.add_argument("--location", help="Location query for Nominatim geocoding.")
+    parser.add_argument(
+        "--running_page",
+        help=(
+            "GitHub repo slug or parquet URL for running_page data, "
+            'for example "yihong0618/run".'
+        ),
+    )
     parser.add_argument("--lat", type=float, help="Latitude.")
     parser.add_argument("--lon", type=float, help="Longitude.")
     parser.add_argument("--title", help="Override poster title.")
@@ -42,8 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--distance-m",
         type=float,
-        default=8000.0,
-        help="Half-width map distance in meters.",
+        default=None,
+        help=(
+            "Half-width map distance in meters. Defaults to 8000, "
+            "or 12000 when --running_page is set."
+        ),
     )
     parser.add_argument(
         "--dpi", type=int, default=300, help="Raster export DPI for PNG sizing."
@@ -101,6 +114,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def resolve_distance_m(args: argparse.Namespace) -> float:
+    if args.distance_m is not None:
+        return args.distance_m
+    if args.running_page:
+        return RUNNING_PAGE_DISTANCE_M
+    return DEFAULT_DISTANCE_M
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -108,13 +129,14 @@ def main(argv: list[str] | None = None) -> int:
         output=Path(args.output),
         formats=tuple(args.format),
         location=args.location or args.query,
+        running_page=args.running_page,
         lat=args.lat,
         lon=args.lon,
         title=args.title,
         subtitle=args.subtitle,
         width_cm=args.width_cm,
         height_cm=args.height_cm,
-        distance_m=args.distance_m,
+        distance_m=resolve_distance_m(args),
         dpi=args.dpi,
         theme=args.theme,
         layout=args.layout,

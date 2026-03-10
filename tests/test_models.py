@@ -126,6 +126,7 @@ class TestPosterRequest:
         assert request.dpi == 300
         assert request.theme == "random"
         assert request.distance_m == 12_000.0
+        assert request.running_page is None
 
     def test_poster_request_post_init(self) -> None:
         request = PosterRequest(

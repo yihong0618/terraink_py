@@ -105,6 +105,7 @@ class PosterRequest:
     output: Path
     formats: tuple[str, ...] = ("png",)
     location: str | None = None
+    running_page: str | None = None
     lat: float | None = None
     lon: float | None = None
     title: str | None = None
