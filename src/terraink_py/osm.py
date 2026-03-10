@@ -66,9 +66,50 @@ KNOWN_FOREIGN_CITIES = frozenset(
         "迪拜",
     }
 )
+SETTLEMENT_TYPES = frozenset(
+    {
+        "city",
+        "town",
+        "village",
+        "hamlet",
+        "municipality",
+        "borough",
+        "suburb",
+        "quarter",
+        "neighbourhood",
+    }
+)
+SETTLEMENT_ADDRESS_TYPES = frozenset(
+    {
+        "city",
+        "town",
+        "village",
+        "municipality",
+        "county",
+        "district",
+        "city_district",
+        "suburb",
+        "borough",
+    }
+)
+ADMIN_NAME_SUFFIXES = (
+    "特别行政区",
+    "自治区",
+    "自治州",
+    "自治县",
+    "省",
+    "市",
+    "区",
+    "县",
+    "州",
+    "旗",
+    "镇",
+    "乡",
+)
 NOMINATIM_MIN_INTERVAL_SECONDS = 1.1
 NOMINATIM_MAX_RETRIES = 2
 NOMINATIM_RETRY_BACKOFF_SECONDS = 0.6
+NOMINATIM_RESULT_LIMIT = 10
 LAST_NOMINATIM_REQUEST_AT = 0.0
 OVERPASS_FALLBACK_URLS = (
     DEFAULT_OVERPASS_URL,
@@ -360,7 +401,9 @@ def _geocode(
                 )
                 if not results:
                     break
-                return _location_from_nominatim_item(results[0])
+                return _location_from_nominatim_item(
+                    _select_best_nominatim_result(normalized_query, results)
+                )
             except RuntimeError as exc:
                 last_error = exc
                 if attempt < NOMINATIM_MAX_RETRIES:
@@ -424,6 +467,113 @@ def _location_from_nominatim_item(item: dict) -> LocationMetadata:
         country=country,
         continent=continent,
     )
+
+
+def _select_best_nominatim_result(query: str, results: Sequence[dict]) -> dict:
+    return max(results, key=lambda item: _nominatim_result_sort_key(query, item))
+
+
+def _nominatim_result_sort_key(
+    query: str, item: dict
+) -> tuple[int, int, int, int, int, float, int]:
+    category = str(item.get("category", "")).strip().casefold()
+    item_type = str(item.get("type", "")).strip().casefold()
+    addresstype = str(item.get("addresstype", "")).strip().casefold()
+    importance = float(item.get("importance") or 0.0)
+    place_rank = int(item.get("place_rank") or 0)
+    return (
+        1 if _nominatim_item_exact_name_match(query, item) else 0,
+        1 if _nominatim_item_matches_query(query, item) else 0,
+        _nominatim_settlement_score(category, item_type, addresstype),
+        1 if category == "place" else 0,
+        0 if category == "boundary" and item_type == "administrative" else 1,
+        importance,
+        place_rank,
+    )
+
+
+def _nominatim_settlement_score(
+    category: str,
+    item_type: str,
+    addresstype: str,
+) -> int:
+    score = 0
+    if category == "place":
+        score += 2
+    if item_type in SETTLEMENT_TYPES:
+        score += 2
+    if addresstype in SETTLEMENT_ADDRESS_TYPES:
+        score += 1
+    return score
+
+
+def _nominatim_item_matches_query(query: str, item: dict) -> bool:
+    query_names = _normalized_name_variants(query, strip_admin_suffixes=True)
+    if not query_names:
+        return False
+    return not query_names.isdisjoint(
+        _nominatim_item_name_variants(item, strip_admin_suffixes=True)
+    )
+
+
+def _nominatim_item_exact_name_match(query: str, item: dict) -> bool:
+    query_names = _normalized_name_variants(query, strip_admin_suffixes=False)
+    if not query_names:
+        return False
+    return not query_names.isdisjoint(
+        _nominatim_item_name_variants(item, strip_admin_suffixes=False)
+    )
+
+
+def _nominatim_item_name_variants(
+    item: dict, *, strip_admin_suffixes: bool
+) -> set[str]:
+    variants: set[str] = set()
+    values = [item.get("name")]
+    address = item.get("address", {})
+    if isinstance(address, dict):
+        values.extend(address.values())
+    for value in values:
+        variants.update(
+            _normalized_name_variants(
+                str(value), strip_admin_suffixes=strip_admin_suffixes
+            )
+        )
+    return variants
+
+
+def _normalized_name_variants(text: str, *, strip_admin_suffixes: bool) -> set[str]:
+    normalized = _normalize_search_text(text)
+    if not normalized:
+        return set()
+
+    variants = {normalized}
+    if "," in normalized:
+        primary = normalized.split(",", 1)[0].strip()
+        if primary:
+            variants.add(primary)
+
+    for suffix in (" china", " 中国"):
+        if normalized.endswith(suffix):
+            stripped = normalized[: -len(suffix)].rstrip(", ")
+            if stripped:
+                variants.add(stripped)
+
+    if strip_admin_suffixes:
+        stripped_variants = {_strip_admin_name_suffix(value) for value in variants}
+        variants.update(value for value in stripped_variants if value)
+    return variants
+
+
+def _normalize_search_text(text: str) -> str:
+    return " ".join(text.replace("，", ",").split()).strip().casefold()
+
+
+def _strip_admin_name_suffix(text: str) -> str:
+    for suffix in ADMIN_NAME_SUFFIXES:
+        if text.endswith(suffix) and len(text) > len(suffix):
+            return text[: -len(suffix)].strip()
+    return text
 
 
 def build_geocode_search_plan(query: str) -> list[tuple[str, str | None]]:
@@ -496,7 +646,7 @@ def _nominatim_search(
     params = {
         "q": query,
         "format": "jsonv2",
-        "limit": "1",
+        "limit": str(NOMINATIM_RESULT_LIMIT),
         "addressdetails": "1",
     }
     if countrycodes:

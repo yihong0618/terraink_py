@@ -5,6 +5,7 @@ from pathlib import Path
 
 from terraink_py.models import Bounds, PosterRequest
 from terraink_py.osm import (
+    _select_best_nominatim_result,
     build_geocode_queries,
     build_geocode_search_plan,
     build_overpass_query,
@@ -454,6 +455,81 @@ class TestBuildGeocodeSearchPlan:
         # Should not have duplicate entries
         plan = build_geocode_search_plan("Beijing")
         assert len(plan) == len(set(plan))
+
+
+class TestSelectBestNominatimResult:
+    def test_prefers_city_place_over_administrative_boundary(self) -> None:
+        results = [
+            {
+                "name": "开封市",
+                "category": "boundary",
+                "type": "administrative",
+                "addresstype": "region",
+                "importance": 0.6032419272965156,
+                "place_rank": 10,
+                "lat": "34.6041670",
+                "lon": "114.4972220",
+                "address": {
+                    "region": "开封市",
+                    "state": "河南省",
+                    "country": "中国",
+                },
+            },
+            {
+                "name": "开封市",
+                "category": "place",
+                "type": "city",
+                "addresstype": "city",
+                "importance": 0.6032419272965156,
+                "place_rank": 16,
+                "lat": "34.7990966",
+                "lon": "114.3054796",
+                "address": {
+                    "city": "开封市",
+                    "district": "龙亭区",
+                    "state": "河南省",
+                    "country": "中国",
+                },
+            },
+        ]
+
+        selected = _select_best_nominatim_result("开封市", results)
+
+        assert selected["category"] == "place"
+        assert selected["type"] == "city"
+        assert selected["lat"] == "34.7990966"
+
+    def test_keeps_exact_name_match_over_more_generic_place(self) -> None:
+        results = [
+            {
+                "name": "河南省",
+                "category": "boundary",
+                "type": "administrative",
+                "addresstype": "state",
+                "importance": 0.8,
+                "place_rank": 8,
+                "address": {
+                    "state": "河南省",
+                    "country": "中国",
+                },
+            },
+            {
+                "name": "河南",
+                "category": "place",
+                "type": "city",
+                "addresstype": "city",
+                "importance": 0.9,
+                "place_rank": 16,
+                "address": {
+                    "city": "河南",
+                    "country": "中国",
+                },
+            },
+        ]
+
+        selected = _select_best_nominatim_result("河南省", results)
+
+        assert selected["name"] == "河南省"
 
 
 class TestKnownForeignCities:
