@@ -121,6 +121,7 @@ class TestPosterRequest:
     def test_poster_request_defaults(self) -> None:
         request = PosterRequest(output=Path("output.png"), lat=39.9042, lon=116.4074)
         assert request.formats == ("png",)
+        assert request.language == "auto"
         assert request.width_cm == 21.0
         assert request.height_cm == 29.7
         assert request.dpi == 300
@@ -206,4 +207,14 @@ class TestPosterRequest:
             formats=("pdf",),  # type: ignore[arg-type]
         )
         with pytest.raises(ValueError, match="Unsupported output format"):
+            request.validate()
+
+    def test_validate_invalid_language(self) -> None:
+        request = PosterRequest(
+            output=Path("output.png"),
+            lat=39.9042,
+            lon=116.4074,
+            language="jp",  # type: ignore[arg-type]
+        )
+        with pytest.raises(ValueError, match="language must be one of"):
             request.validate()

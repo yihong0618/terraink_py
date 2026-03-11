@@ -45,10 +45,6 @@ class CachedHttpClient:
         body: bytes | None = None,
         headers: dict[str, str] | None = None,
     ) -> bytes:
-        cache_path = self._cache_path(method, url, body)
-        if cache_path is not None and cache_path.exists():
-            return cache_path.read_bytes()
-
         req_headers = {
             "User-Agent": self.user_agent,
             "Accept": "application/json",
@@ -56,6 +52,10 @@ class CachedHttpClient:
         }
         if headers:
             req_headers.update(headers)
+
+        cache_path = self._cache_path(method, url, body, req_headers)
+        if cache_path is not None and cache_path.exists():
+            return cache_path.read_bytes()
 
         req = request.Request(
             url, data=body, headers=req_headers, method=method.upper()
@@ -80,7 +80,13 @@ class CachedHttpClient:
             cache_path.write_bytes(payload)
         return payload
 
-    def _cache_path(self, method: str, url: str, body: bytes | None) -> Path | None:
+    def _cache_path(
+        self,
+        method: str,
+        url: str,
+        body: bytes | None,
+        headers: dict[str, str],
+    ) -> Path | None:
         if self.cache_dir is None:
             return None
         digest = hashlib.sha256()
@@ -88,6 +94,13 @@ class CachedHttpClient:
         digest.update(b"\0")
         digest.update(url.encode("utf-8"))
         digest.update(b"\0")
+        for key, value in sorted(
+            (name.casefold(), item) for name, item in headers.items()
+        ):
+            digest.update(key.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(value.encode("utf-8"))
+            digest.update(b"\0")
         if body:
             digest.update(body)
         return self.cache_dir / f"{digest.hexdigest()}.bin"

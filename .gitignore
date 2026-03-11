@@ -209,3 +209,4 @@ __marimo__/
 .terraink-cache/*
 output/*
 outputs/
+.DS_Store

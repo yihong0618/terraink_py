@@ -43,3 +43,14 @@ def format_city_label(city: str) -> str:
     if is_latin_script(city):
         return "  ".join(city.upper())
     return city
+
+
+def infer_text_language(*values: str | None) -> str:
+    for value in values:
+        if not value:
+            continue
+        if contains_cjk(value):
+            return "zh"
+        if is_latin_script(value):
+            return "en"
+    return "en"
