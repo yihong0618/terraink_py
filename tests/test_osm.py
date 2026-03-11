@@ -8,6 +8,8 @@ from terraink_py.http import CachedHttpClient
 from terraink_py.models import Bounds, PosterRequest
 from terraink_py.osm import (
     _fetch_overpass_parallel,
+    _nominatim_search,
+    _reverse_geocode,
     _select_best_nominatim_result,
     build_geocode_queries,
     build_geocode_search_plan,
@@ -57,6 +59,30 @@ class StubOverpassClient:
             self.slow_started.wait(timeout=1.0)
             return {"endpoint": url}
         raise RuntimeError(f"unexpected endpoint: {url}")
+
+
+class RecordingClient:
+    def __init__(self, payload: dict | list[dict]) -> None:
+        self.payload = payload
+        self.calls: list[dict[str, object]] = []
+
+    def request_json(
+        self,
+        method: str,
+        url: str,
+        *,
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict | list[dict]:
+        self.calls.append(
+            {
+                "method": method,
+                "url": url,
+                "body": body,
+                "headers": headers or {},
+            }
+        )
+        return self.payload
 
 
 class TestBuildOverpassQuery:
@@ -614,6 +640,88 @@ class TestSelectBestNominatimResult:
         selected = _select_best_nominatim_result("河南省", results)
 
         assert selected["name"] == "河南省"
+
+
+class TestNominatimLanguageHeaders:
+    def test_search_uses_english_for_latin_request(self, monkeypatch) -> None:
+        monkeypatch.setattr("terraink_py.osm.time.sleep", lambda _: None)
+        client = RecordingClient([])
+
+        _nominatim_search(
+            "Georges River Council",
+            countrycodes=None,
+            request=PosterRequest(
+                output=Path("test.png"),
+                location="Georges River Council",
+            ),
+            client=cast(CachedHttpClient, client),
+        )
+
+        headers = cast(dict[str, str], client.calls[0]["headers"])
+        assert headers["Accept-Language"].startswith("en")
+
+    def test_search_uses_chinese_for_cjk_request(self, monkeypatch) -> None:
+        monkeypatch.setattr("terraink_py.osm.time.sleep", lambda _: None)
+        client = RecordingClient([])
+
+        _nominatim_search(
+            "开封",
+            countrycodes=None,
+            request=PosterRequest(
+                output=Path("test.png"),
+                location="开封",
+            ),
+            client=cast(CachedHttpClient, client),
+        )
+
+        headers = cast(dict[str, str], client.calls[0]["headers"])
+        assert headers["Accept-Language"].startswith("zh-CN")
+
+    def test_explicit_language_overrides_auto_detection(self, monkeypatch) -> None:
+        monkeypatch.setattr("terraink_py.osm.time.sleep", lambda _: None)
+        client = RecordingClient([])
+
+        _nominatim_search(
+            "Sydney",
+            countrycodes=None,
+            request=PosterRequest(
+                output=Path("test.png"),
+                location="Sydney",
+                language="zh",
+            ),
+            client=cast(CachedHttpClient, client),
+        )
+
+        headers = cast(dict[str, str], client.calls[0]["headers"])
+        assert headers["Accept-Language"].startswith("zh-CN")
+
+    def test_reverse_geocode_uses_request_language(self) -> None:
+        client = RecordingClient(
+            {
+                "lat": "-33.9682",
+                "lon": "151.1355",
+                "display_name": "Georges River Council, New South Wales, Australia",
+                "address": {
+                    "city": "Georges River Council",
+                    "country": "Australia",
+                },
+            }
+        )
+
+        _reverse_geocode(
+            -33.9682,
+            151.1355,
+            PosterRequest(
+                output=Path("test.png"),
+                lat=-33.9682,
+                lon=151.1355,
+                title="Georges River Council",
+            ),
+            cast(CachedHttpClient, client),
+        )
+
+        headers = cast(dict[str, str], client.calls[0]["headers"])
+        assert headers["Accept-Language"].startswith("en")
 
 
 class TestKnownForeignCities:

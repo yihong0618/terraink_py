@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 OutputFormat = Literal["png", "svg"]
+RequestLanguage = Literal["auto", "en", "zh"]
 ProgressStage = Literal[
     "preparing_request",
     "resolving_location",
@@ -119,6 +120,7 @@ class PosterRequest:
     lon: float | None = None
     title: str | None = None
     subtitle: str | None = None
+    language: RequestLanguage = "auto"
     width_cm: float = 21.0
     height_cm: float = 29.7
     distance_m: float = 12_000.0
@@ -157,6 +159,8 @@ class PosterRequest:
     def validate(self) -> None:
         if not self.location and (self.lat is None or self.lon is None):
             raise ValueError("Provide either --location or both --lat and --lon.")
+        if self.language not in {"auto", "en", "zh"}:
+            raise ValueError("language must be one of: auto, en, zh.")
         if self.width_cm <= 0 or self.height_cm <= 0:
             raise ValueError("Poster width and height must be positive.")
         if self.dpi <= 0:

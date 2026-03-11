@@ -30,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--title", help="Override poster title.")
     parser.add_argument("--subtitle", help="Override poster subtitle.")
     parser.add_argument(
+        "--language",
+        choices=["auto", "en", "zh"],
+        default="auto",
+        help="Language used for geocoded place labels. Defaults to auto-detect.",
+    )
+    parser.add_argument(
         "--theme", default="random", help=f"Theme id. Available: {themes}"
     )
     parser.add_argument("--layout", help=f"Layout id. Available: {layouts}")
@@ -112,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         lon=args.lon,
         title=args.title,
         subtitle=args.subtitle,
+        language=args.language,
         width_cm=args.width_cm,
         height_cm=args.height_cm,
         distance_m=args.distance_m,

@@ -4,6 +4,7 @@ from __future__ import annotations
 from terraink_py.text import (
     contains_cjk,
     format_city_label,
+    infer_text_language,
     is_latin_script,
     CITY_FONT_BASE_PX,
     CITY_FONT_MIN_PX,
@@ -86,6 +87,20 @@ class TestFormatCityLabel:
     def test_empty_string(self) -> None:
         result = format_city_label("")
         assert result == ""
+
+
+class TestInferTextLanguage:
+    def test_prefers_english_for_latin_text(self) -> None:
+        assert infer_text_language("Georges River Council") == "en"
+
+    def test_prefers_chinese_for_cjk_text(self) -> None:
+        assert infer_text_language("澳大利亚") == "zh"
+
+    def test_uses_first_meaningful_text(self) -> None:
+        assert infer_text_language("München", "中国") == "en"
+
+    def test_defaults_to_english(self) -> None:
+        assert infer_text_language(None, "", "12345") == "en"
 
 
 class TestConstants:

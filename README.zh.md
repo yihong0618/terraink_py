@@ -89,5 +89,6 @@ uv run terraink --help
 
 - Python 渲染器直接使用 Nominatim 和 Overpass API，因此适用于城市和区域级别的地图海报，而非全球范围导出。
 - `svg` 输出为真正的矢量几何图形，而非浏览器截图封装在 SVG 中。
+- 地名文字默认会根据 `title`、`subtitle` 或查询词自动判断语言；需要强制英文或中文时，可使用 `--language en` 或 `--language zh`。
 - 中文地名现在会自动回退到 macOS/Linux 系统上常见的 CJK 字体；如果您的设备缺少字体支持，可通过 `--font-file /path/to/font.ttf` 指定字体文件。
 - PyPI 包名为 `terraink_py`，而 CLI 命令为 `terraink`。

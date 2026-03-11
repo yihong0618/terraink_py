@@ -30,6 +30,7 @@ terraink \
   "Ganjingzi District, China" \
   --theme midnight_blue \
   --layout print_a4_portrait \
+  --language en \
   --distance-m 4000 \
   --format png svg \
   --output outputs/ganjingzi
@@ -87,5 +88,6 @@ Notes:
 
 - The Python renderer uses Nominatim + Overpass directly, so it is designed for city and regional posters rather than world-scale exports.
 - `svg` output is true vector geometry, not a browser screenshot wrapped in SVG.
+- Place label language defaults to auto-detect from your title/subtitle/query. Use `--language en` or `--language zh` to override it.
 - Chinese place names now auto-fallback to common CJK system fonts on macOS/Linux; if your machine still lacks glyph coverage, pass `--font-file /path/to/font.ttf`.
 - The PyPI package name is `terraink_py`, while the CLI command is `terraink`.

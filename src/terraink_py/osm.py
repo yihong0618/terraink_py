@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 
 from .http import CachedHttpClient, HttpRequestError
 from .models import Bounds, DEFAULT_OVERPASS_URL, LocationMetadata, PosterRequest
+from .text import infer_text_language
 
 WATER_LANDUSE_VALUES = {"reservoir", "basin"}
 PARK_LEISURE_VALUES = {"park", "garden", "pitch", "playground"}
@@ -142,6 +143,18 @@ def resolve_location(
             country=request.subtitle or "",
         )
     return _reverse_geocode(request.lat, request.lon, request, client)
+
+
+def _resolve_request_language(request: PosterRequest) -> str:
+    if request.language != "auto":
+        return request.language
+    return infer_text_language(request.title, request.subtitle, request.location)
+
+
+def _nominatim_accept_language(request: PosterRequest) -> str:
+    if _resolve_request_language(request) == "zh":
+        return "zh-CN,zh;q=0.9,en;q=0.6"
+    return "en,en-US;q=0.9,zh-CN;q=0.4,zh;q=0.3"
 
 
 def fetch_osm_layers(
@@ -512,7 +525,11 @@ def _reverse_geocode(
             "addressdetails": "1",
         }
     )
-    payload = client.request_json("GET", f"{request.nominatim_url}/reverse?{params}")
+    payload = client.request_json(
+        "GET",
+        f"{request.nominatim_url}/reverse?{params}",
+        headers={"Accept-Language": _nominatim_accept_language(request)},
+    )
     if not isinstance(payload, dict):
         raise RuntimeError("Reverse geocoding returned an invalid response.")
     return _location_from_nominatim_item(payload)
@@ -734,7 +751,7 @@ def _nominatim_search(
     payload = client.request_json(
         "GET",
         f"{request.nominatim_url}/search?{urlencode(params)}",
-        headers={"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
+        headers={"Accept-Language": _nominatim_accept_language(request)},
     )
     LAST_NOMINATIM_REQUEST_AT = time.monotonic()
     return payload if isinstance(payload, list) else []
