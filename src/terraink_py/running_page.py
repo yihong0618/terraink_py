@@ -5,50 +5,31 @@ from urllib.parse import urlparse
 import duckdb
 
 from .models import LocationMetadata, PosterRequest
+from .osm import ADMIN_NAME_SUFFIXES
 
 RUNNING_ROUTE_LAYER = "running_route"
 DEFAULT_RUNNING_PAGE_BRANCH = "master"
 DEFAULT_RUNNING_PAGE_PARQUET_PATH = "run_page/data.parquet"
-ADMIN_NAME_SUFFIXES = (
-    "特别行政区",
-    "自治区",
-    "自治州",
-    "自治县",
-    "省",
-    "市",
-    "区",
-    "县",
-    "州",
-    "旗",
-    "镇",
-    "乡",
-)
 
 
 def load_running_page_routes(
     request: PosterRequest,
-    location: LocationMetadata,
 ) -> list[list[tuple[float, float]]]:
     source = (request.running_page or "").strip()
     if not source:
         return []
 
     parquet_source = resolve_running_page_parquet_url(source)
-    location_filters = build_running_page_location_filters(request, location)
-    if not location_filters:
-        return []
 
     sql = f"""
         SELECT DISTINCT summary_polyline
         FROM read_parquet('{sql_string_literal(parquet_source)}')
         WHERE summary_polyline IS NOT NULL
           AND length(trim(summary_polyline)) > 0
-          AND location_country IS NOT NULL
           AND (type IS NULL OR lower(type) LIKE '%run%')
-          AND ({' OR '.join('instr(lower(location_country), ?) > 0' for _ in location_filters)})
     """
     with duckdb.connect() as connection:
-        rows = connection.execute(sql, location_filters).fetchall()
+        rows = connection.execute(sql).fetchall()
 
     routes: list[list[tuple[float, float]]] = []
     for (encoded_path,) in rows:

@@ -107,7 +107,42 @@ LINE_SIMPLIFY_TOLERANCE_PX = {
     "road_path": 1.1,
     "running_route": 0.4,
 }
-RUNNING_ROUTE_COLOR = "#D7EF57"
+_RUNNING_ROUTE_CANDIDATES = (
+    "#D7EF57",
+    "#FF5252",
+    "#40C4FF",
+    "#FF6D00",
+    "#00E676",
+    "#E040FB",
+    "#FFEA00",
+    "#00BFA5",
+)
+
+
+def _relative_luminance(hex_color: str) -> float:
+    r, g, b = (int(hex_color[i : i + 2], 16) / 255.0 for i in (1, 3, 5))
+    channels = []
+    for c in (r, g, b):
+        channels.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast_ratio(lum1: float, lum2: float) -> float:
+    lighter = max(lum1, lum2)
+    darker = min(lum1, lum2)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def running_route_color(land_color: str) -> str:
+    land_lum = _relative_luminance(land_color)
+    best_color = _RUNNING_ROUTE_CANDIDATES[0]
+    best_ratio = 0.0
+    for candidate in _RUNNING_ROUTE_CANDIDATES:
+        ratio = _contrast_ratio(land_lum, _relative_luminance(candidate))
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_color = candidate
+    return best_color
 
 
 def build_scene(
@@ -713,6 +748,7 @@ def render_svg(scene: ProjectedScene) -> str:
                 )
             )
 
+    route_color = running_route_color(theme.map.land)
     for path in scene.lines.get("running_route", []):
         lines.append(
             stroke_path_element(
@@ -725,7 +761,7 @@ def render_svg(scene: ProjectedScene) -> str:
         lines.append(
             stroke_path_element(
                 path,
-                stroke=RUNNING_ROUTE_COLOR,
+                stroke=route_color,
                 stroke_width=metrics["running_route_width"],
                 opacity=metrics["running_route_opacity"],
             )
@@ -884,6 +920,7 @@ def render_png(scene: ProjectedScene, output_path: Path) -> None:
 
     running_outline_alpha = opacity_to_alpha(metrics["running_route_outline_opacity"])
     running_alpha = opacity_to_alpha(metrics["running_route_opacity"])
+    route_color = running_route_color(theme.map.land)
     for path in scene.lines.get("running_route", []):
         draw_polyline(
             draw,
@@ -894,7 +931,7 @@ def render_png(scene: ProjectedScene, output_path: Path) -> None:
         draw_polyline(
             draw,
             path,
-            fill=hex_to_rgba(RUNNING_ROUTE_COLOR, running_alpha),
+            fill=hex_to_rgba(route_color, running_alpha),
             width=metrics["running_route_width"],
         )
 

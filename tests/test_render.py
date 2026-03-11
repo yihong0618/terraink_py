@@ -8,7 +8,7 @@ from terraink_py.data import get_theme
 from terraink_py.geo import MercatorProjector
 from terraink_py.models import Bounds, CanvasSize, Coordinate, PosterRequest
 from terraink_py.render import (
-    RUNNING_ROUTE_COLOR,
+    running_route_color,
     apply_png_fades,
     build_scene,
     draw_dashed_polyline,
@@ -428,4 +428,4 @@ class TestRunningRouteRendering:
 
         svg = render_svg(scene)
         assert f'stroke="{theme.map.land}"' in svg
-        assert f'stroke="{RUNNING_ROUTE_COLOR}"' in svg
+        assert f'stroke="{running_route_color(theme.map.land)}"' in svg

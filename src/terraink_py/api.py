@@ -64,7 +64,7 @@ class PosterGenerator:
                 "fetching_map_data", percent, message
             ),
         )
-        running_routes = load_running_page_routes(prepared, location)
+        running_routes = load_running_page_routes(prepared)
         if running_routes:
             layers[RUNNING_ROUTE_LAYER] = running_routes
         projector = MercatorProjector.from_bounds(

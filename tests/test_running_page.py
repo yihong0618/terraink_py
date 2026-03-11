@@ -4,7 +4,7 @@ from pathlib import Path
 
 import duckdb
 
-from terraink_py.models import LocationMetadata, PosterRequest
+from terraink_py.models import PosterRequest
 from terraink_py.running_page import (
     decode_polyline,
     load_running_page_routes,
@@ -45,7 +45,7 @@ def test_decode_polyline_returns_lon_lat_pairs() -> None:
     ]
 
 
-def test_load_running_page_routes_filters_city_and_decodes_polyline(
+def test_load_running_page_routes_loads_all_runs(
     tmp_path: Path,
 ) -> None:
     parquet_path = tmp_path / "runs.parquet"
@@ -72,19 +72,7 @@ def test_load_running_page_routes_filters_city_and_decodes_polyline(
             location="大连",
             running_page=parquet_path.as_posix(),
         ),
-        LocationMetadata(
-            label="大连市, 辽宁省, 中国",
-            lat=38.914,
-            lon=121.614,
-            city="大连市",
-            country="中国",
-        ),
     )
 
-    assert routes == [
-        [
-            (-120.2, 38.5),
-            (-120.95, 40.7),
-            (-126.453, 43.252),
-        ]
-    ]
+    # Returns both Run rows (Dalian + Beijing), skipping the Ride
+    assert len(routes) == 2
