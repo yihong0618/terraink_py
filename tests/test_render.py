@@ -8,11 +8,13 @@ from terraink_py.data import get_theme
 from terraink_py.geo import MercatorProjector
 from terraink_py.models import Bounds, CanvasSize, Coordinate, PosterRequest
 from terraink_py.render import (
+    running_route_color,
     apply_png_fades,
     build_scene,
     draw_dashed_polyline,
     hex_to_rgba,
     path_intersects_bounds,
+    render_svg,
     resolve_font,
     simplify_polygon,
     _resolve_font_cached,
@@ -393,3 +395,37 @@ class TestDrawDashedPolyline:
             dash=3.0,
             gap=2.0,
         )
+
+
+class TestRunningRouteRendering:
+    def test_render_svg_draws_running_route_overlay(self) -> None:
+        poster_bounds = Bounds(south=-1.0, west=-1.0, north=1.0, east=1.0)
+        theme = get_theme("midnight_blue")
+        scene = build_scene(
+            size=CanvasSize(
+                width=200,
+                height=200,
+                requested_width=200,
+                requested_height=200,
+                downscale_factor=1.0,
+            ),
+            center=Coordinate(lat=0.0, lon=0.0),
+            title="Center",
+            subtitle="Earth",
+            theme=theme,
+            layers={
+                "running_route": [[(-0.5, -0.5), (0.0, 0.0), (0.5, 0.5)]],
+            },
+            projector=MercatorProjector.from_bounds(poster_bounds, 200, 200),
+            poster_bounds=poster_bounds,
+            request=PosterRequest(
+                output=Path("test.png"),
+                lat=0.0,
+                lon=0.0,
+                show_poster_text=False,
+            ),
+        )
+
+        svg = render_svg(scene)
+        assert f'stroke="{theme.map.land}"' in svg
+        assert f'stroke="{running_route_color(theme.map.land)}"' in svg

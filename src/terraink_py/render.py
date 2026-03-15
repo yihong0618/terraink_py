@@ -105,7 +105,44 @@ LINE_SIMPLIFY_TOLERANCE_PX = {
     "road_minor_mid": 0.9,
     "road_minor_low": 1.0,
     "road_path": 1.1,
+    "running_route": 0.4,
 }
+_RUNNING_ROUTE_CANDIDATES = (
+    "#D7EF57",
+    "#FF5252",
+    "#40C4FF",
+    "#FF6D00",
+    "#00E676",
+    "#E040FB",
+    "#FFEA00",
+    "#00BFA5",
+)
+
+
+def _relative_luminance(hex_color: str) -> float:
+    r, g, b = (int(hex_color[i : i + 2], 16) / 255.0 for i in (1, 3, 5))
+    channels = []
+    for c in (r, g, b):
+        channels.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast_ratio(lum1: float, lum2: float) -> float:
+    lighter = max(lum1, lum2)
+    darker = min(lum1, lum2)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def running_route_color(land_color: str) -> str:
+    land_lum = _relative_luminance(land_color)
+    best_color = _RUNNING_ROUTE_CANDIDATES[0]
+    best_ratio = 0.0
+    for candidate in _RUNNING_ROUTE_CANDIDATES:
+        ratio = _contrast_ratio(land_lum, _relative_luminance(candidate))
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_color = candidate
+    return best_color
 
 
 def build_scene(
@@ -711,6 +748,25 @@ def render_svg(scene: ProjectedScene) -> str:
                 )
             )
 
+    route_color = running_route_color(theme.map.land)
+    for path in scene.lines.get("running_route", []):
+        lines.append(
+            stroke_path_element(
+                path,
+                stroke=theme.map.land,
+                stroke_width=metrics["running_route_outline_width"],
+                opacity=metrics["running_route_outline_opacity"],
+            )
+        )
+        lines.append(
+            stroke_path_element(
+                path,
+                stroke=route_color,
+                stroke_width=metrics["running_route_width"],
+                opacity=metrics["running_route_opacity"],
+            )
+        )
+
     lines.extend(
         [
             f'<rect x="0" y="0" width="{scene.width}" height="{scene.height * 0.25}" fill="url(#terraink-fade-top)"/>',
@@ -861,6 +917,23 @@ def render_png(scene: ProjectedScene, output_path: Path) -> None:
                 fill=hex_to_rgba(color, alpha),
                 width=metrics[width_key],
             )
+
+    running_outline_alpha = opacity_to_alpha(metrics["running_route_outline_opacity"])
+    running_alpha = opacity_to_alpha(metrics["running_route_opacity"])
+    route_color = running_route_color(theme.map.land)
+    for path in scene.lines.get("running_route", []):
+        draw_polyline(
+            draw,
+            path,
+            fill=hex_to_rgba(theme.map.land, running_outline_alpha),
+            width=metrics["running_route_outline_width"],
+        )
+        draw_polyline(
+            draw,
+            path,
+            fill=hex_to_rgba(route_color, running_alpha),
+            width=metrics["running_route_width"],
+        )
 
     apply_png_fades(image, theme.ui.bg)
 
@@ -1040,12 +1113,14 @@ def compute_scene_metrics(scene: ProjectedScene) -> dict[str, float]:
         "minor_mid_width": minor_mid_width,
         "minor_low_width": minor_low_width,
         "path_width": path_width,
+        "running_route_width": max(1.4, major_width * 0.85),
         "waterway_width": max(0.62, 1.15 * line_scale),
         "rail_width": max(0.58, 0.92 * line_scale),
         "major_casing_width": major_width * 1.38,
         "minor_high_casing_width": minor_high_width * 1.45,
         "minor_mid_casing_width": minor_mid_width * 1.15,
         "path_casing_width": path_width * 1.6,
+        "running_route_outline_width": max(2.2, major_width * 1.5),
         "minor_high_overview_width": max(0.1, minor_high_width * 0.34),
         "minor_mid_overview_width": max(0.08, minor_mid_width * 0.3),
         "minor_low_overview_width": max(0.06, minor_low_width * 0.26),
@@ -1108,6 +1183,8 @@ def compute_scene_metrics(scene: ProjectedScene) -> dict[str, float]:
             estimated_zoom,
             ((8.0, 0.7), (12.0, 0.82), (18.0, 0.95)),
         ),
+        "running_route_opacity": 1.0,
+        "running_route_outline_opacity": 0.96,
     }
 
 

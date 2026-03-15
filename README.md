@@ -38,6 +38,14 @@ terraink \
 
 `--location "..."` still works; the positional argument is just a shorter alias.
 
+To overlay routes from a `running_page` parquet, pass the repo slug or parquet URL:
+
+```bash
+terraink "Dalian" --running_page yihong0618/run --output outputs/dalian-run
+```
+
+When `--running_page` is set, the default `--distance-m` becomes `12000` unless you override it explicitly.
+
 ### Development
 
 Use `uv` in this repo:
