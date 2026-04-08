@@ -552,6 +552,12 @@ def _location_from_nominatim_item(item: dict) -> LocationMetadata:
         if value:
             city = value
             break
+    province = ""
+    for key in ("state", "province", "region"):
+        value = str(address.get(key, "")).strip()
+        if value:
+            province = value
+            break
     country = str(address.get("country", "")).strip()
     continent = str(address.get("continent", "")).strip()
     label = str(item.get("display_name", city or country)).strip()
@@ -561,6 +567,7 @@ def _location_from_nominatim_item(item: dict) -> LocationMetadata:
         lon=float(item["lon"]),
         city=city or label,
         country=country,
+        province=province,
         continent=continent,
     )
 

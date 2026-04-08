@@ -112,3 +112,66 @@ def test_generate_poster_reports_progress(monkeypatch, tmp_path: Path) -> None:
     assert result.files == (tmp_path / "poster.png", tmp_path / "poster.svg")
     assert result.files[0].read_bytes() == b"png"
     assert result.files[1].read_text(encoding="utf-8") == "<svg />"
+
+
+def test_generate_poster_uses_china_province_in_subtitle(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        "terraink_py.api.resolve_location",
+        lambda request, client: LocationMetadata(
+            label="大连市, 辽宁省, 中国",
+            lat=38.914,
+            lon=121.6147,
+            city="大连市",
+            country="中国",
+            province="辽宁省",
+        ),
+    )
+    monkeypatch.setattr(
+        "terraink_py.api.resolve_canvas_size",
+        lambda *args, **kwargs: CanvasSize(
+            width=100,
+            height=140,
+            requested_width=100,
+            requested_height=140,
+            downscale_factor=1.0,
+        ),
+    )
+    monkeypatch.setattr(
+        "terraink_py.api.compute_poster_and_fetch_bounds",
+        lambda **kwargs: PosterBoundsResult(
+            poster_bounds=Bounds(south=0.0, west=0.0, north=1.0, east=1.0),
+            fetch_bounds=Bounds(south=0.0, west=0.0, north=1.0, east=1.0),
+            half_meters_x=1000.0,
+            half_meters_y=1000.0,
+            fetch_half_meters=1000.0,
+        ),
+    )
+    monkeypatch.setattr("terraink_py.api.fetch_osm_layers", lambda *args, **kwargs: {})
+    monkeypatch.setattr("terraink_py.api.MercatorProjector", FakeProjector)
+    monkeypatch.setattr("terraink_py.api.get_theme", lambda theme_id: {"id": theme_id})
+
+    scene_args: dict[str, str] = {}
+
+    def fake_build_scene(**kwargs):
+        scene_args["title"] = kwargs["title"]
+        scene_args["subtitle"] = kwargs["subtitle"]
+        return {"scene": kwargs["title"]}
+
+    monkeypatch.setattr("terraink_py.api.build_scene", fake_build_scene)
+    monkeypatch.setattr(
+        "terraink_py.api.render_png",
+        lambda scene, output_path: output_path.write_bytes(b"png"),
+    )
+
+    generate_poster(
+        PosterRequest(
+            output=tmp_path / "poster.png",
+            formats=("png",),
+            location="大连",
+        )
+    )
+
+    assert scene_args["title"] == "大连市"
+    assert scene_args["subtitle"] == "辽宁省, 中国"

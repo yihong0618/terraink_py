@@ -12,6 +12,7 @@ from .geo import (
 from .http import CachedHttpClient
 from .models import (
     Coordinate,
+    LocationMetadata,
     PosterProgress,
     PosterRequest,
     PosterResult,
@@ -77,7 +78,7 @@ class PosterGenerator:
             size=size,
             center=center,
             title=(prepared.title or location.city or location.label).strip(),
-            subtitle=(prepared.subtitle or location.country).strip(),
+            subtitle=(prepared.subtitle or _format_location_subtitle(location)).strip(),
             theme=theme,
             layers=layers,
             projector=projector,
@@ -132,6 +133,27 @@ def prepare_request(request: PosterRequest) -> PosterRequest:
         request.width_cm = layout.width_cm
         request.height_cm = layout.height_cm
     return request
+
+
+def _format_location_subtitle(location: LocationMetadata) -> str:
+    country = location.country.strip()
+    province = location.province.strip()
+    if not province or not _is_china_country(country):
+        return country
+    if province == country:
+        return country
+    return ", ".join(part for part in (province, country) if part)
+
+
+def _is_china_country(country: str) -> bool:
+    normalized = " ".join(country.replace("’", "'").strip().split()).casefold()
+    return normalized in {
+        "中国",
+        "中华人民共和国",
+        "china",
+        "people's republic of china",
+        "peoples republic of china",
+    }
 
 
 def resolve_output_paths(output: Path, formats: tuple[str, ...]) -> dict[str, Path]:

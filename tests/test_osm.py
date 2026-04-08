@@ -8,6 +8,7 @@ from terraink_py.http import CachedHttpClient
 from terraink_py.models import Bounds, PosterRequest
 from terraink_py.osm import (
     _fetch_overpass_parallel,
+    _location_from_nominatim_item,
     _nominatim_search,
     _reverse_geocode,
     _select_best_nominatim_result,
@@ -254,6 +255,26 @@ class TestFetchOverpassParallel:
         client.release_slow.set()
         assert client.slow_finished.wait(timeout=1.0)
         thread.join(timeout=1.0)
+
+
+class TestLocationFromNominatimItem:
+    def test_extracts_province_for_china_location(self) -> None:
+        location = _location_from_nominatim_item(
+            {
+                "lat": "38.914003",
+                "lon": "121.614682",
+                "display_name": "大连市, 辽宁省, 中国",
+                "address": {
+                    "city": "大连市",
+                    "state": "辽宁省",
+                    "country": "中国",
+                },
+            }
+        )
+
+        assert location.city == "大连市"
+        assert location.province == "辽宁省"
+        assert location.country == "中国"
 
 
 class TestFetchOsmLayersProgress:

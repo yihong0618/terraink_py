@@ -109,6 +109,7 @@ class LocationMetadata:
     lon: float
     city: str
     country: str
+    province: str = ""
     continent: str = ""
 
 
