@@ -578,13 +578,16 @@ def _select_best_nominatim_result(query: str, results: Sequence[dict]) -> dict:
 
 def _nominatim_result_sort_key(
     query: str, item: dict
-) -> tuple[int, int, int, int, int, float, int]:
+) -> tuple[int, int, int, int, int, int, float, int]:
     category = str(item.get("category", "")).strip().casefold()
     item_type = str(item.get("type", "")).strip().casefold()
     addresstype = str(item.get("addresstype", "")).strip().casefold()
     importance = float(item.get("importance") or 0.0)
     place_rank = int(item.get("place_rank") or 0)
     return (
+        _nominatim_admin_or_settlement_match_score(
+            query, category, item_type, addresstype, item
+        ),
         1 if _nominatim_item_exact_name_match(query, item) else 0,
         1 if _nominatim_item_matches_query(query, item) else 0,
         _nominatim_settlement_score(category, item_type, addresstype),
@@ -593,6 +596,24 @@ def _nominatim_result_sort_key(
         importance,
         place_rank,
     )
+
+
+def _nominatim_admin_or_settlement_match_score(
+    query: str,
+    category: str,
+    item_type: str,
+    addresstype: str,
+    item: dict,
+) -> int:
+    is_admin = category == "boundary" and item_type == "administrative"
+    is_settlement = _nominatim_settlement_score(category, item_type, addresstype) > 0
+    if not (is_admin or is_settlement):
+        return 0
+    if _nominatim_item_exact_name_match(query, item):
+        return 3
+    if _nominatim_item_matches_query(query, item):
+        return 2
+    return 1
 
 
 def _nominatim_settlement_score(

@@ -662,6 +662,41 @@ class TestSelectBestNominatimResult:
 
         assert selected["name"] == "河南省"
 
+    def test_prefers_admin_city_over_non_settlement_exact_match(self) -> None:
+        results = [
+            {
+                "name": "德阳",
+                "category": "natural",
+                "type": "peak",
+                "addresstype": "peak",
+                "importance": 0.55,
+                "place_rank": 18,
+                "address": {
+                    "town": "帕里镇",
+                    "county": "亚东县",
+                    "state": "西藏自治区",
+                    "country": "中国",
+                },
+            },
+            {
+                "name": "德阳市",
+                "category": "boundary",
+                "type": "administrative",
+                "addresstype": "city",
+                "importance": 0.55,
+                "place_rank": 10,
+                "address": {
+                    "city": "德阳市",
+                    "state": "四川省",
+                    "country": "中国",
+                },
+            },
+        ]
+
+        selected = _select_best_nominatim_result("德阳", results)
+
+        assert selected["name"] == "德阳市"
+
 
 class TestNominatimLanguageHeaders:
     def test_search_uses_english_for_latin_request(self, monkeypatch) -> None:
